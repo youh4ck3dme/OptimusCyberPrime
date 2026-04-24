@@ -6,6 +6,10 @@ import socket
 import time
 import subprocess
 
+def format_probe_error(probe_name, error):
+    """Return a normalized error string for probe failures."""
+    return f"unavailable ({probe_name}: {error.__class__.__name__}: {error})"
+
 # 🔴 Albania Blood Cybersecurity Banner
 def print_banner():
     banner = """
@@ -29,14 +33,30 @@ def print_banner():
 
 # 🔎 Get System Information
 def get_system_info():
+    hostname = "unavailable"
+    ip_address = "unavailable"
+
+    try:
+        hostname = socket.gethostname()
+    except OSError as e:
+        hostname = format_probe_error("hostname resolution", e)
+
+    if hostname == "unavailable":
+        ip_address = "unavailable"
+    else:
+        try:
+            ip_address = socket.gethostbyname(hostname)
+        except socket.gaierror as e:
+            ip_address = format_probe_error("ip resolution", e)
+
     system_info = {
         "OS": platform.system(),
         "Version": platform.version(),
         "Release": platform.release(),
         "Machine": platform.machine(),
         "Processor": platform.processor(),
-        "Hostname": socket.gethostname(),
-        "IP Address": socket.gethostbyname(socket.gethostname()),
+        "Hostname": hostname,
+        "IP Address": ip_address,
         "Uptime": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(psutil.boot_time()))
     }
     return system_info
@@ -44,8 +64,26 @@ def get_system_info():
 # 🖥️ Get Running Processes
 def get_running_processes():
     processes = []
-    for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
-        processes.append(proc.info)
+    try:
+        process_iter = psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent'])
+    except (psutil.Error, OSError) as e:
+        return [{
+            "pid": "unavailable",
+            "name": format_probe_error("process iteration", e),
+            "cpu_percent": "unavailable",
+            "memory_percent": "unavailable"
+        }]
+
+    for proc in process_iter:
+        try:
+            processes.append(proc.info)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError) as e:
+            processes.append({
+                "pid": "unavailable",
+                "name": format_probe_error("process read", e),
+                "cpu_percent": "unavailable",
+                "memory_percent": "unavailable"
+            })
     return processes
 
 # 📡 Wi-Fi Network Scan (Requires Jailbreak/Root)
