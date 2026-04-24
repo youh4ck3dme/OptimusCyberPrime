@@ -2,6 +2,7 @@
 import os
 import platform
 import psutil
+import re
 import socket
 import time
 import subprocess
@@ -59,6 +60,11 @@ def get_wifi_networks():
     return wifi_info
 
 # 📂 Save Report
+def sanitize_report_field(value, max_length=256):
+    normalized = re.sub(r"[\x00-\x1f\x7f]", "", str(value))
+    return normalized[:max_length]
+
+
 def save_report(system_info, processes, wifi_networks):
     report_path = "output/system_report.txt"
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
@@ -66,13 +72,22 @@ def save_report(system_info, processes, wifi_networks):
     with open(report_path, "w") as f:
         f.write("### System Information ###\n")
         for key, value in system_info.items():
-            f.write(f"{key}: {value}\n")
+            sanitized_key = sanitize_report_field(key)
+            sanitized_value = sanitize_report_field(value)
+            f.write(f"{sanitized_key}: {sanitized_value}\n")
         f.write("\n### Running Processes ###\n")
         for proc in processes[:10]:  # Show only first 10 processes
-            f.write(f"PID: {proc['pid']}, Name: {proc['name']}, CPU: {proc['cpu_percent']}%, Memory: {proc['memory_percent']}%\n")
+            sanitized_name = sanitize_report_field(proc['name'])
+            f.write(
+                f"PID: {proc['pid']}, "
+                f"Name: {sanitized_name}, "
+                f"CPU: {proc['cpu_percent']}%, "
+                f"Memory: {proc['memory_percent']}%\n"
+            )
         f.write("\n### Wi-Fi Networks ###\n")
         for net in wifi_networks:
-            f.write(f"{net}\n")
+            sanitized_network = sanitize_report_field(net)
+            f.write(f"{sanitized_network}\n")
     
     print(f"\033[1;32mReport saved to {report_path}\033[0m")  # Green color
 
