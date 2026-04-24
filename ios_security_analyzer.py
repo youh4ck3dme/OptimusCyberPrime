@@ -5,6 +5,7 @@ import psutil
 import socket
 import time
 import subprocess
+import re
 
 # 🔴 Albania Blood Cybersecurity Banner
 def print_banner():
@@ -29,23 +30,51 @@ def print_banner():
 
 # 🔎 Get System Information
 def get_system_info():
+    try:
+        hostname = socket.gethostname()
+    except Exception:
+        hostname = "unavailable"
+
+    ip_address = "unavailable"
+    if hostname != "unavailable":
+        try:
+            ip_address = socket.gethostbyname(hostname)
+        except Exception:
+            ip_address = "unavailable"
+
+    try:
+        uptime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(psutil.boot_time()))
+    except Exception:
+        uptime = "unavailable"
+
     system_info = {
         "OS": platform.system(),
         "Version": platform.version(),
         "Release": platform.release(),
         "Machine": platform.machine(),
         "Processor": platform.processor(),
-        "Hostname": socket.gethostname(),
-        "IP Address": socket.gethostbyname(socket.gethostname()),
-        "Uptime": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(psutil.boot_time()))
+        "Hostname": hostname,
+        "IP Address": ip_address,
+        "Uptime": uptime
     }
     return system_info
 
 # 🖥️ Get Running Processes
 def get_running_processes():
     processes = []
-    for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
-        processes.append(proc.info)
+    try:
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
+            try:
+                processes.append(proc.info)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+    except Exception:
+        return [{
+            'pid': 'n/a',
+            'name': 'process_enumeration_failed',
+            'cpu_percent': 'n/a',
+            'memory_percent': 'n/a'
+        }]
     return processes
 
 # 📡 Wi-Fi Network Scan (Requires Jailbreak/Root)
@@ -54,9 +83,18 @@ def get_wifi_networks():
     try:
         result = subprocess.check_output("nmcli dev wifi", shell=True, text=True)
         wifi_info = result.split("\n")[1:]  # Ignore the first line
-    except Exception as e:
+    except Exception:
         wifi_info.append("Wi-Fi scan unavailable on iOS sandbox.")
     return wifi_info
+
+
+
+def sanitize_report_field(value, max_len=200):
+    if value is None:
+        return ""
+    cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', str(value))
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned[:max_len]
 
 # 📂 Save Report
 def save_report(system_info, processes, wifi_networks):
@@ -69,10 +107,14 @@ def save_report(system_info, processes, wifi_networks):
             f.write(f"{key}: {value}\n")
         f.write("\n### Running Processes ###\n")
         for proc in processes[:10]:  # Show only first 10 processes
-            f.write(f"PID: {proc['pid']}, Name: {proc['name']}, CPU: {proc['cpu_percent']}%, Memory: {proc['memory_percent']}%\n")
+            pid = sanitize_report_field(proc.get('pid', 'n/a'), max_len=32)
+            name = sanitize_report_field(proc.get('name', 'n/a'), max_len=80)
+            cpu = sanitize_report_field(proc.get('cpu_percent', 'n/a'), max_len=32)
+            memory = sanitize_report_field(proc.get('memory_percent', 'n/a'), max_len=32)
+            f.write(f"PID: {pid}, Name: {name}, CPU: {cpu}%, Memory: {memory}%\n")
         f.write("\n### Wi-Fi Networks ###\n")
         for net in wifi_networks:
-            f.write(f"{net}\n")
+            f.write(f"{sanitize_report_field(net)}\n")
     
     print(f"\033[1;32mReport saved to {report_path}\033[0m")  # Green color
 
